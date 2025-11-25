@@ -1,0 +1,296 @@
+Problem statement :
+
+Generate BDD Tests (in Gherkin format) for the given URL
+Problem Statement
+You are required to design and implement an AI-based automation solution that dynamically generates Gherkin-style testing scenarios for websites containing hovering elements (for example: navigation menus, image overlays, tooltip popups, or dropdown lists revealed on hover).
+ Objective
+The system should :
+1. Accept a website URL as input and
+2. Automatically:
+a. Detect and analyze hoverable elements across the given page (not limited to menus).
+b. Simulate hover actions using browser automation. (e.g., Playwright).
+c. Identify elements or links that become visible as a result of the hover interaction.
+d. Identify any popup/modal behaviors triggered by actions.
+Generate clean, well-formatted Gherkin scenarios describing how a tester should validate:    - The visibility and behavior of hover-based elements.    - The clickability and redirection (if applicable) of revealed links or elements.
+⚠️ Important Note:
+The solution must be fully dynamic and autonomous.
+It should not rely on any hardcoded selectors, labels, or element identifiers.
+Instead, it should analyze the webpage structure and behaviors to understand interactions at runtime.
+It should work seamlessly across different types of modern, dynamic websites — not just static pages or predefined DOM structures.
+
+Functional Expectations / Requirements
+· Input: A single website URL.
+· Output: Automatically generated Gherkin .feature file (or console output) containing two dynamic test cases for that URL: a. Validation of popup/overlay behavior (if found). b. Validation of hover-based interactions (e.g., dropdowns or hover menus).
+Tech Stack Requirements
+Development must be done in Python. Refer the following suggested technologies. But you are free to use any other technical stack as well, as long as it is Python based solution.
+ 
+ 
+__Suggested Technical Stack__
+__ __
+Layer
+Recommended Tools
+Browser Automation
+Playwright / Selenium
+HTML Parsing / DOM Analysis
+BeautifulSoup, lxml
+LLM Reasoning
+OpenAI GPT-4/GPT-5, Gemini, or Ollama (local)
+Agentic Frameworks
+Autogen / CrewAI / LangGraph / MCP
+Backend API
+FastAPI
+UI (Optional)
+Streamlit
+Storage
+SQLite or JSON for caching DOM metadata
+Output Format
+.feature files (Gherkin)
+__ __
+Candidate may use one or multiple of the above frameworks as part of the solution. Use of open-source libraries or projects is allowed if appropriately cited or integrated.
+ 
+Example Website
+Input URL’s:
+1. __https://www.tivdak.com/patient-stories/__
+2. __https://www.nike.com/in/__
+3. __https://www.apple.com/in/__
+
+Expected Example Gherkin Scenarios
+ 
+Normal Test Steps
+Gherkin BDD Format
+Test 1:
+1. Goto the url https://www.tivdak.com/patient-stories/
+2. Click the button called “Learn More”
+3. A pop up will appear with the title saying “You are now leaving tivdak.com”
+4. Click the cancel button
+5. Click the button called “Learn More”
+6. A pop up will appear with the title saying “You are now leaving tivdak.com”
+7. Click the continue button
+8. Verify the url has changed to “https://alishasjourney.com/”
+Feature: Validate "Learn More" pop-up functionality
+ 
+Scenario: Verify the cancel button in the "You are now leaving tivdak.com" pop-up 
+ 
+Given the user is on the "https://www.tivdak.com/patient-stories/" page 
+When the user clicks the "Learn More" button 
+Then a pop-up should appear with the title "You are now leaving tivdak.com" 
+And the user clicks the "Cancel" button 
+Then the pop-up should close and the user should remain on the same page
+ 
+When the user clicks the "Learn More" button 
+Then a pop-up should appear with the title "You are now leaving tivdak.com" 
+And the user clicks the "Continue" button 
+the same page
+Then the page URL should change to "https://alishasjourney.com/"
+ 
+Test 2:
+1. Go to the URL https://www.tivdak.com/patient-stories/
+2. Hover over the navigation menu “About Tivdak”
+3. A drop-down will appear
+4. Click on the link “What is Tivdak?”
+5. Verify the URL has changed to “https://www.tivdak.com/about-tivdak/”
+Feature: Validate navigation menu functionality
+ 
+Scenario: Verify navigation from "Patient Stories" to "What is Tivdak" page 
+ 
+Given the user is on the "https://www.tivdak.com/patient-stories/" page 
+When the user hovers over the navigation menu "About Tivdak" 
+And clicks the link "What is Tivdak?" from the dropdown 
+Then the page URL should change to "https://www.tivdak.com/about-tivdak/"
+ 
+ 
+Deliverables:
+a. Source code (well-structured and modular)
+b. Push the complete solution to a public GitHub repository and share the link
+c. Include a well-structured README file with setup, usage instructions, and requirements.txt
+d. Provide a demo video (max. 7 minutes) showcasing the solution flow and output and key code logic.
+e. Sample output Gherkin file (e.g., hover_tests.feature) or console output
+f. The solution should cover both logics — detecting hover elements and popup elements.
+ 
+References
+BDD Gherkin - __https://cucumber.io/docs/gherkin/__
+Please refer the above table. The same tests written in Gherkin format.
+(prefer using opensource resources ollama, langraph, mcp etc)
+
+
+
+
+solution plan
+
+User Input (URL)
+    ↓
+Browser Automation Layer (Playwright)
+    ↓
+DOM Analysis & Interaction Detection
+    ↓
+AI Reasoning Layer (Ollama + LangGraph)
+    ↓
+Gherkin Generator
+    ↓
+Output (.feature files)
+
+
+my project structure (just skeleton without codes)
+
+
+Phase 2: Core Components
+2.1 Browser Automation Layer (browser/automation.py)
+Responsibilities:
+
+Initialize Playwright browser context
+Navigate to URLs
+Capture screenshots for analysis
+Execute JavaScript for DOM inspection
+
+Key Methods:
+pythonclass BrowserAutomation:
+    async def navigate(url: str)
+    async def get_page_content()
+    async def take_screenshot()
+    async def execute_script(script: str)
+    async def get_all_interactive_elements()
+
+2.2 Element Detector (browser/element_detector.py)
+Responsibilities:
+
+Detect hoverable elements dynamically
+Identify popup/modal triggers
+Simulate hover interactions
+Track visibility changes
+
+Detection Strategy:
+pythonclass ElementDetector:
+    async def find_hoverable_elements():
+        # 1. Query all elements with CSS :hover rules
+        # 2. Detect elements with onmouseover/onmouseenter
+        # 3. Check for aria-haspopup attributes
+        # 4. Analyze CSS display/visibility changes
+        
+    async def detect_popups():
+        # 1. Monitor DOM mutations
+        # 2. Detect modal/dialog elements
+        # 3. Track z-index changes
+        # 4. Identify overlay elements
+        
+    async def simulate_hover(element):
+        # Use Playwright's hover() method
+        # Wait for animations/transitions
+        # Capture before/after states
+Dynamic Detection Techniques:
+
+CSS selector analysis for :hover pseudo-classes
+JavaScript event listener detection
+Mutation Observer for DOM changes
+Computed style comparison (before/after hover)
+Accessibility tree analysis (ARIA attributes)
+
+
+2.3 DOM Analyzer (analyzer/dom_analyzer.py)
+Responsibilities:
+
+Parse HTML structure
+Build element hierarchy
+Extract semantic information
+Identify navigation patterns
+
+Key Features:
+pythonclass DOMAnalyzer:
+    def extract_navigation_structure():
+        # Detect nav, header, menu elements
+        # Build hierarchy of links
+        
+    def identify_element_role(element):
+        # Determine if button, link, menu, etc.
+        # Use ARIA roles, semantic HTML
+        
+    def get_element_description(element):
+        # Extract text, aria-label, title
+        # Generate human-readable identifier
+
+2.4 AI Reasoning Layer (ai/llm_client.py + ai/agent_orchestrator.py)
+Using Ollama (Local LLM):
+
+Model: llama3.1 or mistral
+Purpose: Understand interactions and generate natural language
+
+LangGraph Agent Architecture:
+python# Define specialized agents
+class TestScenarioAgent:
+    """Analyzes interactions and creates test scenarios"""
+    
+class GherkinFormatterAgent:
+    """Converts scenarios to proper Gherkin syntax"""
+    
+class ValidationAgent:
+    """Ensures test coverage and quality"""
+```
+
+**Agent Workflow (LangGraph):**
+```
+[Input: URL + Interactions] 
+    → DetectorAgent (finds hover/popup elements)
+    → AnalyzerAgent (understands behavior)
+    → ScenarioAgent (creates test cases)
+    → GherkinAgent (formats output)
+    → ValidationAgent (quality check)
+    → [Output: .feature file]
+Prompt Engineering Strategy:
+pythonprompt_template = """
+You are a QA automation expert. Given the following interaction data:
+
+URL: {url}
+Element: {element_description}
+Action: {action_type}
+Result: {interaction_result}
+
+Generate a Gherkin scenario that:
+1. Uses proper Given/When/Then structure
+2. Includes clear, actionable steps
+3. Validates expected outcomes
+4. Uses element descriptions (not selectors)
+
+Format: Return ONLY valid Gherkin syntax.
+"""
+
+2.5 Interaction Mapper (analyzer/interaction_mapper.py)
+Responsibilities:
+
+Map hover actions to outcomes
+Track URL changes
+Detect new visible elements
+Build interaction graphs
+
+
+2.6 Gherkin Generator (generator/gherkin_generator.py)
+Responsibilities:
+
+Convert interactions to Gherkin
+Format scenarios properly
+Ensure uniqueness and clarity
+
+Template System:
+pythonclass GherkinGenerator:
+   
+        """
+Phase 3: Implementation Strategy
+Step-by-Step Execution Flow:
+
+URL Input → Validate and normalize URL
+Page Load & Analysis
+Element Detection
+Interaction Simulation
+AI-Powered Analysis
+Gherkin Generation
+Phase 4: Advanced Features
+4.1 Caching System (cache/storage.py)
+Instead of hardcoded selectors, generate human-readable descriptions:
+4.3 Confidence Scoring
+Phase 5: API & UI
+5.1 FastAPI Backend (api/main.py)
+5.2 Streamlit UI (ui/streamlit_app.py)
+Phase 6: Testing & Validation
+Unit Tests
+
+
+
+

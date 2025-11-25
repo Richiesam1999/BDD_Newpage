@@ -1,0 +1,133 @@
+Existing output from our code on www.nike.com/in/ :
+# Auto-generated BDD test scenarios
+# URL: https://www.nike.com/in/
+# Generated: 2025-11-23 16:41:38
+
+Feature: Validate New & Featured menu functionality
+
+  Scenario: Verify dropdown navigation from New & Featured menu
+
+    Given the user is on "https://www.nike.com/in/" page
+    When the user clicks the "New & Featured" button
+    Then a dropdown menu should appear with product categories
+
+Feature: Validate New & Featured menu functionality
+
+  Scenario: Verify dropdown navigation from New & Featured menu
+
+    Given the user is on "https://www.nike.com/in/" page
+    When the user clicks the "New & Featured" navigation button
+    Then a dropdown menu should appear with product categories
+
+
+
+
+
+required/expected output (used open ai on the same page):
+
+Feature: Hover interactions on Nike India homepage
+  In order to quickly discover and shop products
+  As a Nike India site visitor on desktop
+  I want hoverable navigation and content elements to reveal their menus and overlays correctly
+
+  Background:
+    Given I am on the Nike India homepage "https://www.nike.com/in/"
+      And the page has finished loading
+
+  @desktop @hover @navigation
+  Scenario: Hovering over "New & Featured" shows its mega-menu
+    Given I am using a desktop viewport
+    When I hover over the "New & Featured" navigation item
+    Then a mega-menu panel should appear below the "New & Featured" item
+      And I should see sections such as "Featured", "Trending", "Shop Icons", and "Shop By Sport"
+      And links like "New Arrivals", "Bestsellers", and "Running" should be visible in the panel
+    When I move the pointer away from both the "New & Featured" item and the mega-menu panel
+    Then the "New & Featured" mega-menu panel should be hidden
+
+  @desktop @hover @navigation
+  Scenario Outline: Hovering over top-level category shows its mega-menu
+    Given I am using a desktop viewport
+    When I hover over the "<category>" navigation item
+    Then a mega-menu panel for "<category>" should appear below the navigation bar
+      And the panel should contain at least one section for shoes and one for clothing where applicable
+    When I move the pointer away from both the "<category>" item and its mega-menu panel
+    Then the "<category>" mega-menu panel should be hidden
+
+    Examples:
+      | category |
+      | Men      |
+      | Women    |
+      | Kids     |
+      | Sale     |
+
+  @desktop @hover @navigation
+  Scenario: Hovering over Help shows its dropdown
+    Given I am using a desktop viewport
+    When I hover over the "Help" link in the top utility bar
+    Then a dropdown menu should be displayed
+      And I should see links such as "Order Status", "Dispatch and Delivery", and "Returns"
+    When I move the pointer away from the "Help" area and its dropdown
+    Then the "Help" dropdown should be hidden
+
+  @desktop @hover @search
+  Scenario: Hovering over the search icon highlights it
+    Given the search icon is visible in the header
+    When I hover over the search icon
+    Then the search icon or its container should visually change to indicate hover
+      And the mouse cursor should change to a pointer
+    When I click the search icon
+    Then a search input field should become visible and focused
+
+  @desktop @hover @header-icons
+  Scenario: Hovering over profile and bag icons shows interactive state
+    Given the profile and bag icons are visible in the header
+    When I hover over the profile icon
+    Then the profile icon should visually indicate it is interactive (for example via color, underline, or background change)
+    When I hover over the bag icon
+    Then the bag icon should visually indicate it is interactive
+      And the mouse cursor should be a pointer over both icons
+
+  @desktop @hover @hero
+  Scenario: Hovering over the primary hero call-to-action button
+    Given I can see the hero section with heading "Sport Is Style"
+      And I see the "Shop Sportswear" call-to-action button
+    When I hover over the "Shop Sportswear" button
+    Then the button should show a distinct hover state (for example color or border change)
+      And the button label text should remain legible and not clipped
+
+  @desktop @hover @content-cards
+  Scenario: Hovering over "Shop Gifts by Sport" cards
+    Given I can see the "Shop Gifts by Sport" section
+      And it shows sport cards such as "Running", "Training", "Football", "Basketball", "Sportswear", and "Kids"
+    When I hover over a sport card (for example "Running")
+    Then the card should visually react to hover (for example image zoom, border, or shadow)
+      And the sport label (for example "Running") should remain readable
+      And clicking the card while hovered should navigate to the corresponding sport gift listing
+
+  @desktop @hover @product-grid
+  Scenario: Hovering over a product tile in a product carousel or grid
+    Given a product carousel or grid is visible (for example "Colour of the Season: Metallic Shine")
+      And each tile shows at least a product image, name, and price
+    When I hover over a product tile
+    Then the product tile should visually respond to hover
+      And any hover-specific controls such as "Favourite", "Quick View", or alternate image (if implemented) should appear or change
+      And the product price and name should remain visible
+
+  @desktop @keyboard @a11y
+  Scenario: Keyboard focus behaves like hover for mega-menu navigation
+    Given I am using a desktop viewport
+      And I am navigating via keyboard
+    When I tab to the "Men" navigation item
+    Then the "Men" mega-menu panel should become visible
+      And I should be able to use Tab and Shift+Tab to move through all focusable links in the "Men" mega-menu panel
+    When I tab away from the "Men" navigation and all items in its panel
+    Then the "Men" mega-menu panel should be hidden
+
+  @mobile @no-hover
+  Scenario: Mobile navigation uses tap instead of hover
+    Given I am using a mobile viewport
+      And the hamburger menu icon is visible
+    When I tap the hamburger menu icon
+    Then the main navigation items such as "New & Featured", "Men", "Women", "Kids", "Sale" and "SNKRS" should be displayed
+    When I tap a top-level navigation item such as "Men"
+    Then its sub-navigation items should be revealed without requiring hover
