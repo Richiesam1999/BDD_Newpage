@@ -1,8 +1,5 @@
 
-"""
-Element Detector - HOVER-FOCUSED VERSION
-Detects elements that reveal dropdowns/menus on HOVER (not static links)
-"""
+#V2 bug fixed
 import asyncio
 import logging
 from typing import List, Dict, Any, Optional

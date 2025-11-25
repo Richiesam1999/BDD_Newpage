@@ -1,3 +1,4 @@
+#V2
 import asyncio
 import sys
 import argparse
@@ -302,4 +303,8 @@ async def main():
 
 
 if __name__ == "__main__":
+    # Fix for Windows: Set event loop policy to support subprocess operations (required by Playwright)
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    
     asyncio.run(main())
