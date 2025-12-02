@@ -1,0 +1,25 @@
+          cli_entry_point()
+                    ↓
+            asyncio.run(main())
+                    ↓
+          parse_arguments() → Get URL, flags
+                    ↓
+        Load Config → Set headless, timeout, etc.
+                    ↓
+    Initialize CLI → Create BrowserAutomation, Cache
+                    ↓
+        generate_tests(url)
+                    ↓
+    ┌─────────────────────────────────┐
+    │ 1. Check cache                  │
+    │ 2. Navigate to URL              │
+    │ 3. Detect elements              │
+    │ 4. Simulate interactions        │
+    │ 5. AI analysis                  │
+    │ 6. Generate Gherkin             │
+    │ 7. Save .feature file           │
+    └─────────────────────────────────┘
+                    ↓
+        Cleanup & Exit
+                    ↓
+    Print success message with file path

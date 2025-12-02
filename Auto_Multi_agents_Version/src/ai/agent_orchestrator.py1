@@ -1,0 +1,1092 @@
+# """
+# Agent Orchestrator - COMPLETE WORKING VERSION
+# Coordinates AI to generate test scenarios from interactions
+# """
+# import logging
+# import json
+# from typing import Dict, Any, List, Optional, Set
+# from dataclasses import dataclass
+# from .llm_client import OllamaClient
+
+# logger = logging.getLogger(__name__)
+
+
+# @dataclass
+# class TestScenario:
+#     """Represents a generated test scenario"""
+#     feature_name: str
+#     scenario_name: str
+#     steps: List[str]
+#     scenario_type: str  # 'hover', 'popup'
+#     url: str
+#     confidence: float = 1.0
+    
+#     # Optional enhanced fields
+#     feature_description: str = ""
+#     background: List[str] = None
+#     tags: List[str] = None
+    
+#     def __post_init__(self):
+#         if self.background is None:
+#             self.background = []
+#         if self.tags is None:
+#             self.tags = []
+    
+#     def is_valid(self) -> bool:
+#         """Check if scenario is valid and meaningful"""
+#         # Must have steps
+#         if not self.steps or len(self.steps) < 3:
+#             return False
+        
+#         # Steps must have actual content (not empty strings)
+#         if any(not step.strip() for step in self.steps):
+#             return False
+        
+#         # Must have meaningful descriptions (not generic)
+#         generic_phrases = ["button element", "element", "the ''", "with the title ''"]
+#         scenario_text = " ".join(self.steps).lower()
+        
+#         # Check for too many generic phrases
+#         generic_count = sum(1 for phrase in generic_phrases if phrase in scenario_text)
+#         if generic_count > 2:
+#             return False
+        
+#         return True
+
+
+# class AgentOrchestrator:
+#     """
+#     Orchestrates AI to generate test scenarios
+#     """
+    
+#     def __init__(self, ollama_url: str = None, model: str = None):
+#         self.llm = OllamaClient(ollama_url, model)
+#         self._seen_scenarios: Set[str] = set()
+    
+#     async def generate_scenarios(
+#         self, 
+#         url: str, 
+#         interactions: List[Any],
+#         dom_structure: Dict[str, Any]
+#     ) -> List[TestScenario]:
+#         """
+#         Main orchestration method - generates test scenarios from interactions
+#         """
+#         logger.info("Starting AI agent workflow for scenario generation...")
+        
+#         scenarios = []
+        
+#         # Group interactions to avoid duplicates
+#         interaction_groups = self._group_interactions(interactions)
+        
+#         # Process hover interactions
+#         for interaction in interaction_groups['hover']:
+#             try:
+#                 scenario = await self._generate_hover_scenario(url, interaction, dom_structure)
+#                 if scenario and scenario.is_valid() and self._is_unique_scenario(scenario):
+#                     scenarios.append(scenario)
+#                     logger.info(f"✓ Generated hover scenario: {scenario.scenario_name}")
+#                 else:
+#                     logger.debug(f"✗ Rejected low-quality hover scenario")
+#             except Exception as e:
+#                 logger.warning(f"Failed to generate hover scenario: {str(e)}")
+        
+#         # Process popup interactions
+#         for interaction in interaction_groups['popup']:
+#             try:
+#                 scenario = await self._generate_popup_scenario(url, interaction, dom_structure)
+#                 if scenario and scenario.is_valid() and self._is_unique_scenario(scenario):
+#                     scenarios.append(scenario)
+#                     logger.info(f"✓ Generated popup scenario: {scenario.scenario_name}")
+#                 else:
+#                     logger.debug(f"✗ Rejected low-quality popup scenario")
+#             except Exception as e:
+#                 logger.warning(f"Failed to generate popup scenario: {str(e)}")
+        
+#         logger.info(f"Generated {len(scenarios)} unique, quality scenarios")
+#         return scenarios
+    
+#     def _group_interactions(self, interactions: List[Any]) -> Dict[str, List[Any]]:
+#         """Group and deduplicate interactions"""
+#         grouped = {'hover': [], 'popup': []}
+#         seen_elements = set()
+        
+#         for interaction in interactions:
+#             # Create unique key for element
+#             element_key = (
+#                 interaction.trigger_element.text[:50],
+#                 interaction.trigger_element.tag,
+#                 interaction.action_type
+#             )
+            
+#             # Skip duplicates
+#             if element_key in seen_elements:
+#                 continue
+            
+#             seen_elements.add(element_key)
+            
+#             if interaction.action_type == 'hover':
+#                 grouped['hover'].append(interaction)
+#             elif interaction.popup_appeared:
+#                 grouped['popup'].append(interaction)
+        
+#         logger.info(f"Grouped: {len(grouped['hover'])} hover, {len(grouped['popup'])} popup (deduplicated)")
+#         return grouped
+    
+#     def _is_unique_scenario(self, scenario: TestScenario) -> bool:
+#         """Check if scenario is unique"""
+#         # Create signature from steps
+#         signature = "|".join(scenario.steps)
+        
+#         if signature in self._seen_scenarios:
+#             return False
+        
+#         self._seen_scenarios.add(signature)
+#         return True
+    
+#     async def _generate_hover_scenario(
+#         self, 
+#         url: str, 
+#         interaction: Any,
+#         dom_structure: Dict[str, Any]
+#     ) -> Optional[TestScenario]:
+#         """Generate test scenario for hover interaction using AI"""
+        
+#         context = self._prepare_hover_context(url, interaction, dom_structure)
+        
+#         # Check if we have clickable links from the menu
+#         clickable_links = []
+#         if interaction.visual_changes and interaction.visual_changes.get('clickable_links'):
+#             clickable_links = interaction.visual_changes['clickable_links']
+        
+#         # Build context about clickable links
+#         links_info = ""
+#         if clickable_links:
+#             links_list = [f"'{link['text']}' → {link['target_url']}" for link in clickable_links[:3]]
+#             links_info = f"\nClickable Links in Menu:\n" + "\n".join(links_list)
+
+
+#             prompt = f"""You are an expert QA automation engineer specializing in dynamic UI testing on modern websites.
+
+# Your task is to generate ONE high-quality Gherkin-style test scenario (as JSON) for a HOVER-BASED INTERACTION on the given page.
+
+# CONTEXT FROM RUNTIME AUTOMATION:
+# - URL: {context['url']}
+# - Page Type (heuristic): {context['page_type']}
+# - Hover Trigger Element (human description): {context['trigger_description']}
+# - Elements / content revealed on hover: {context['revealed_description']}
+# - Did the browser URL change after interaction?: {context['url_changed']}
+# - Clickable links detected inside the revealed area (if any, format 'TEXT' → URL):
+# {links_info if links_info else "  (None detected)"}
+
+# TEST OBJECTIVE:
+# Design a Gherkin scenario that a manual tester or automation engineer can follow to validate:
+# 1. That the hover interaction correctly reveals the expected content (menus, dropdowns, overlays, tooltip-like content, etc.).
+# 2. That any revealed links/elements are visible and clickable.
+# 3. That navigation/URL change happens correctly when a revealed link is clicked (ONLY if a target URL is actually provided in the context).
+
+# IMPORTANT RULES (MUST FOLLOW):
+# 1. The scenario MUST be for a **hover-based interaction**, not a click-only interaction.
+# 2. Use **human-friendly descriptions** based on the provided context, e.g. use the wording from:
+#    - trigger_description
+#    - revealed_description
+#    - the link text from the clickable links list
+#    Do NOT invent arbitrary names like "button element", "component 1", etc.
+# 3. DO NOT mention CSS selectors, XPaths, IDs, or class names. Only describe what an end-user sees (labels, text, visual role).
+# 4. If one or more clickable links are provided in the context:
+#    - Pick 1 or 2 of the most relevant links.
+#    - Use their **exact link text** and **exact target URL** (the URL that appears after the "→" arrow).
+#    - Add steps that click the link(s) and verify navigation.
+# 5. If NO clickable links are provided:
+#    - Focus on verifying that the hover reveals the expected content and that it is visible and remains visible while hovered.
+#    - You may still add a step to verify that no unexpected navigation happens.
+# 6. Steps MUST be Gherkin-style, starting with Given/When/Then/And.
+# 7. Use precise wording like:
+#    - "When the user hovers over the navigation menu \\"<text from trigger_description>\\""
+#    - "Then a dropdown menu showing \\"<part of revealed_description>\\" should be visible"
+#    - "And clicks the link \\"<link text>\\" from the revealed menu"
+#    - "Then the page URL should change to \\"<target URL>\\""
+# 8. The scenario MUST be fully generic and dynamic:
+#    - Do NOT assume this is always a header nav bar; it could be any hoverable element.
+#    - Do NOT hardcode anything specific to a single website domain.
+#    - Use only information provided in the context.
+
+# OUTPUT FORMAT (STRICT):
+# Return ONLY a single JSON object with this schema (no markdown, no extra text):
+
+# {{
+#   "feature_name": "A short, clear feature name describing hover-based navigation or content reveal using the trigger element",
+#   "feature_description": "1–2 sentence description of what is being validated for this hover-based interaction",
+#   "scenario_name": "A concise scenario title describing what is being verified",
+#   "tags": ["@hover", "@dynamic-ui"],
+#   "background": [
+#     "Given the user is on \\"{context['url']}\\" page"
+#   ],
+#   "steps": [
+#     "Given the user is on \\"{context['url']}\\" page",
+#     "When the user hovers over \\"<human-friendly name of trigger element based on trigger_description>\\"",
+#     "Then <assert that revealed content is visible based on revealed_description>",
+#     "And <optionally, assert structure/behavior of the revealed menu or overlay>",
+#     "And <if a clickable link exists, click it and verify URL or navigation using the exact target URL>"
+#   ]
+# }}
+
+# CONSTRAINTS:
+# - Steps MUST be concrete and meaningful – no empty strings, no generic "element" wording.
+# - Use only links and URLs that appear in the clickable links list above if you assert navigation.
+# - If no navigation is applicable, omit the navigation/URL change step instead of inventing one.
+# - Respond with VALID JSON ONLY."""
+
+        
+# #         prompt = f"""You are a QA automation expert generating Gherkin test scenarios.
+
+# # CONTEXT:
+# # - URL: {context['url']}
+# # - Page Type: {context['page_type']}
+# # - Element: {context['trigger_description']}
+# # - What Appears on Hover: {context['revealed_description']}
+# # - URL Changed: {context['url_changed']}{links_info}
+
+# # STRICT REQUIREMENTS:
+# # 1. Use SPECIFIC element descriptions (e.g., "About Tivdak menu", not "button element")
+# # 2. Describe ACTUAL behavior: hover reveals menu, then click link
+# # 3. If clickable links are provided, include steps to click them and verify navigation
+# # 4. Use "the user hovers over" (NOT "clicks" for the initial action)
+# # 5. After hover, if links exist, add: "And clicks the link '[link name]' from the dropdown"
+# # 6. Then verify: "Then the page URL should change to '[target URL]'"
+
+# # COMPLETE INTERACTION FLOW:
+# # Step 1: Hover over element → Menu appears
+# # Step 2: Click link from menu → Navigate to new page
+# # Step 3: Verify URL changed
+
+# # OUTPUT FORMAT (JSON only):
+# # {{
+# #   "feature_name": "Validate [element] navigation functionality",
+# #   "scenario_name": "Verify navigation from [current page] to [target page]",
+# #   "steps": [
+# #     "Given the user is on \\"{context['url']}\\" page",
+# #     "When the user hovers over the navigation menu \\"[MENU NAME]\\"",
+# #     "And clicks the link \\"[LINK NAME]\\" from the dropdown",
+# #     "Then the page URL should change to \\"[TARGET URL]\\""
+# #   ]
+# # }}
+
+# # EXAMPLE (if About Tivdak menu has "What is Tivdak?" link to /about-tivdak/):
+# # {{
+# #   "feature_name": "Validate About Tivdak navigation functionality",
+# #   "scenario_name": "Verify navigation from Patient Stories to What is Tivdak page",
+# #   "steps": [
+# #     "Given the user is on \\"https://www.tivdak.com/patient-stories/\\" page",
+# #     "When the user hovers over the navigation menu \\"About Tivdak\\"",
+# #     "And clicks the link \\"What is Tivdak?\\" from the dropdown",
+# #     "Then the page URL should change to \\"https://www.tivdak.com/about-tivdak/\\""
+# #   ]
+# # }}
+
+# # Generate for the provided context. Return ONLY valid JSON:"""
+
+#         try:
+#             response = await self.llm.generate_json(prompt)
+            
+#             scenario = TestScenario(
+#                 feature_name=response.get('feature_name', 'Validate hover functionality'),
+#                 scenario_name=response.get('scenario_name', 'Verify hover interaction'),
+#                 steps=response.get('steps', []),
+#                 scenario_type='hover',
+#                 url=url,
+#                 confidence=0.8
+#             )
+            
+#             if not scenario.is_valid():
+#                 logger.warning("AI generated low-quality hover scenario, using fallback")
+#                 return self._fallback_hover_scenario(url, interaction, clickable_links)
+            
+#             return scenario
+            
+#         except Exception as e:
+#             logger.error(f"AI generation failed for hover scenario: {str(e)}")
+#             return self._fallback_hover_scenario(url, interaction, clickable_links)
+    
+#     async def _generate_popup_scenario(
+#         self,
+#         url: str,
+#         interaction: Any,
+#         dom_structure: Dict[str, Any]
+#     ) -> Optional[TestScenario]:
+#         """Generate test scenario for popup interaction using AI"""
+        
+#         context = self._prepare_popup_context(url, interaction, dom_structure)
+        
+#         # Check if it's actually a popup
+#         if not context['popup_title'] and not context['popup_buttons']:
+#             logger.debug("Not a true popup, skipping scenario generation")
+#             return None
+        
+#         prompt = f"""You are an expert QA automation engineer. Your job is to write ONE Gherkin-style scenario (as JSON) describing how to test a POPUP / MODAL / OVERLAY that is triggered from a user interaction on a web page.
+
+# CONTEXT FROM RUNTIME AUTOMATION:
+# - URL: {context['url']}
+# - Page Type (heuristic): {context['page_type']}
+# - Trigger Element (human description): {context['trigger_description']}
+# - Popup / Modal Title (if detected): "{context['popup_title']}"
+# - Buttons detected inside popup/modal: {context['popup_buttons']}
+# - Did the browser URL change after the popup action?: {context['url_changed']}
+
+# TEST OBJECTIVE:
+# Generate a scenario that validates:
+# 1. That interacting with the trigger element causes the popup/modal/dropdown/overlay to become visible.
+# 2. That the popup content (e.g., title) is correct and visible.
+# 3. That pressing a relevant button inside the popup produces the correct behavior:
+#    - Either the popup closes, OR
+#    - The page navigates to a new URL (if such behavior is observed in the context).
+
+# IMPORTANT RULES (MUST FOLLOW):
+# 1. Use a **specific, human-readable name** for the trigger element based on trigger_description.
+#    - Example style: "the age verification button", "the \\"Log in\\" button in the header", "the country selector".
+#    - Do NOT use generic phrases like "button element", "the element", etc.
+# 2. For the popup:
+#    - If popup_title is provided, include it verbatim in a step, like:
+#      "Then a modal dialog titled \\"<popup_title>\\" should be visible"
+#    - If no title is provided, describe it as "a popup", "a modal dialog", or "an overlay" based on context.
+# 3. For buttons inside the popup:
+#    - Use ONLY the buttons listed in popup_buttons (if any). Do NOT invent button names.
+#    - If buttons exist, choose the most relevant (often the primary action button like "Accept", "Continue", "Close", "OK").
+# 4. Navigation vs closing behavior:
+#    - If the context suggests URL change (url_changed == "Yes"), your final step should verify that navigation happens.
+#    - If no URL change is indicated, assume the primary behavior is that the popup closes and the user stays on the same page.
+# 5. Steps MUST be Gherkin-style and ordered logically:
+#    - Start from the user being on the page.
+#    - Trigger the popup.
+#    - Verify it appears and shows expected content.
+#    - Interact with a button (if any).
+#    - Verify the result (closed popup OR navigation).
+# 6. Do NOT mention CSS selectors, XPaths, IDs, or low-level DOM details.
+#    - Only describe visible labels, text, and behavior that a human tester would see.
+
+# OUTPUT FORMAT (STRICT):
+# Return ONLY a single JSON object with this schema (no markdown, no extra text):
+
+# {{
+#   "feature_name": "A short, clear feature name describing the popup/modal behavior being validated",
+#   "feature_description": "1–2 sentence description of what the popup/modal interaction ensures for the user",
+#   "scenario_name": "A concise scenario title describing the popup behavior",
+#   "tags": ["@popup", "@dynamic-ui"],
+#   "background": [
+#     "Given the user is on \\"{context['url']}\\" page"
+#   ],
+#   "steps": [
+#     "Given the user is on \\"{context['url']}\\" page",
+#     "When the user clicks \\"<human-friendly trigger name based on trigger_description>\\"",
+#     "Then <describe that a popup/modal/dropdown/overlay appears, including the actual title if available>",
+#     "And <optionally verify presence of key buttons or content>",
+#     "When the user clicks the \\"<button text from popup_buttons>\\" button inside the popup",
+#     "Then <describe expected result: popup is closed OR page navigates (if url_changed == \\"Yes\\")>"
+#   ]
+# }}
+
+# CONSTRAINTS:
+# - Do not output empty, placeholder, or generic steps.
+# - Use only button names that exist in the popup_buttons context string.
+# - If no buttons are detected, omit the button click step and instead verify that the popup is visible and can be dismissed in a generic way (e.g., by closing or clicking outside), without inventing specific button labels.
+# - Respond with VALID JSON ONLY."""
+        
+# #         prompt = f"""You are a QA automation expert. Generate a Gherkin test scenario for this interaction.
+
+# # CONTEXT:
+# # - URL: {context['url']}
+# # - Trigger Element: {context['trigger_description']}
+# # - Popup/Modal Title: "{context['popup_title']}"
+# # - Available Buttons: {context['popup_buttons']}
+# # - URL Changes After: {context['url_changed']}
+
+# # CRITICAL REQUIREMENTS:
+# # 1. Use the EXACT element description
+# # 2. Include the ACTUAL popup title in quotes
+# # 3. Test ONLY the buttons that actually exist
+# # 4. If this is a dropdown menu, describe it as "dropdown menu"
+# # 5. Be SPECIFIC about expected outcomes
+
+# # OUTPUT (JSON only):
+# # {{
+# #   "feature_name": "Validate [specific] functionality",
+# #   "scenario_name": "Verify [specific behavior]",
+# #   "steps": [
+# #     "Given the user is on \\"{context['url']}\\" page",
+# #     "When the user clicks the [SPECIFIC element name]",
+# #     "Then a [popup/modal/dropdown] should appear",
+# #     "[Test specific button actions]"
+# #   ]
+# # }}
+
+# # Generate for provided context:"""
+
+#         try:
+#             response = await self.llm.generate_json(prompt)
+            
+#             scenario = TestScenario(
+#                 feature_name=response.get('feature_name', 'Validate interaction'),
+#                 scenario_name=response.get('scenario_name', 'Verify interaction'),
+#                 steps=response.get('steps', []),
+#                 scenario_type='popup',
+#                 url=url,
+#                 confidence=0.8
+#             )
+            
+#             if not scenario.is_valid():
+#                 logger.warning("AI generated low-quality popup scenario, using fallback")
+#                 return self._fallback_popup_scenario(url, interaction)
+            
+#             return scenario
+            
+#         except Exception as e:
+#             logger.error(f"AI generation failed for popup scenario: {str(e)}")
+#             return self._fallback_popup_scenario(url, interaction)
+    
+#     def _prepare_hover_context(self, url: str, interaction: Any, dom_structure: Dict) -> Dict[str, str]:
+#         """Prepare context for hover scenario generation"""
+#         if interaction.revealed_elements:
+#             revealed_texts = [el.text[:50] for el in interaction.revealed_elements[:3] if el.text]
+#             revealed_desc = ", ".join(revealed_texts) if revealed_texts else "navigation options or dropdown items"
+#         else:
+#             revealed_desc = "additional navigation options"
+        
+#         return {
+#             'url': url,
+#             'page_type': dom_structure.get('page_type', 'general'),
+#             'trigger_description': interaction.trigger_element.get_description(),
+#             'revealed_description': revealed_desc,
+#             'url_changed': 'Yes' if interaction.url_after else 'No'
+#         }
+    
+#     def _prepare_popup_context(self, url: str, interaction: Any, dom_structure: Dict) -> Dict[str, str]:
+#         """Prepare context for popup scenario generation"""
+#         popup_info = interaction.popup_info or {}
+        
+#         buttons = popup_info.get('buttons', [])
+#         button_names = [btn.get('text', '').strip() for btn in buttons if btn.get('text', '').strip()]
+#         buttons_str = ', '.join(button_names) if button_names else 'No buttons detected'
+        
+#         return {
+#             'url': url,
+#             'page_type': dom_structure.get('page_type', 'general'),
+#             'trigger_description': interaction.trigger_element.get_description(),
+#             'popup_title': popup_info.get('title', '').strip(),
+#             'popup_buttons': buttons_str,
+#             'url_changed': 'Yes' if interaction.url_after else 'No'
+#         }
+    
+#     def _fallback_hover_scenario(self, url: str, interaction: Any, clickable_links: List[Dict] = None) -> TestScenario:
+#         """Fallback template-based scenario with complete interaction flow"""
+#         element_text = interaction.trigger_element.text[:50] if interaction.trigger_element.text else "navigation element"
+#         element_tag = interaction.trigger_element.tag
+        
+#         if element_text:
+#             element_desc = f'"{element_text}" {element_tag}'
+#             menu_name = element_text
+#         else:
+#             element_desc = f'{element_tag} element in navigation'
+#             menu_name = "navigation menu"
+        
+#         revealed = interaction.revealed_elements
+#         if revealed and any(el.text for el in revealed):
+#             outcome = "a dropdown menu with additional options should appear"
+#         else:
+#             outcome = "additional navigation content should become visible"
+        
+#         steps = [
+#             f'Given the user is on "{url}" page',
+#             f'When the user hovers over the navigation menu "{menu_name}"',
+#             f'Then {outcome}',
+#         ]
+        
+#         # Add clickable link steps if available
+#         if clickable_links and len(clickable_links) > 0:
+#             first_link = clickable_links[0]
+#             link_text = first_link.get('text', '')
+#             target_url = first_link.get('target_url', '')
+            
+#             if link_text and target_url:
+#                 steps.append(f'And clicks the link "{link_text}" from the dropdown')
+#                 steps.append(f'Then the page URL should change to "{target_url}"')
+#         elif interaction.url_after:
+#             steps.append(f'And the page URL should change to "{interaction.url_after}"')
+        
+#         scenario_name = f'Verify navigation from {menu_name} menu'
+#         if clickable_links and len(clickable_links) > 0:
+#             first_link = clickable_links[0]
+#             link_text = first_link.get('text', '')
+#             if link_text:
+#                 scenario_name = f'Verify navigation to {link_text} page'
+        
+#         return TestScenario(
+#             feature_name=f'Validate {menu_name} navigation functionality',
+#             scenario_name=scenario_name,
+#             steps=steps,
+#             scenario_type='hover',
+#             url=url,
+#             confidence=0.6
+#         )
+    
+#     def _fallback_popup_scenario(self, url: str, interaction: Any) -> TestScenario:
+#         """Fallback template-based scenario"""
+#         element_text = interaction.trigger_element.text[:50] if interaction.trigger_element.text else None
+#         popup_info = interaction.popup_info or {}
+        
+#         if element_text:
+#             element_desc = f'"{element_text}" button'
+#         else:
+#             element_desc = 'navigation button'
+        
+#         popup_title = popup_info.get('title', '').strip()
+#         buttons = popup_info.get('buttons', [])
+        
+#         steps = [
+#             f'Given the user is on "{url}" page',
+#             f'When the user clicks the {element_desc}',
+#         ]
+        
+#         if popup_title:
+#             steps.append(f'Then a modal dialog should appear with the title "{popup_title}"')
+#         else:
+#             steps.append('Then a dropdown menu or overlay should appear')
+        
+#         if buttons:
+#             first_button = buttons[0].get('text', '').strip()
+#             if first_button:
+#                 steps.append(f'When the user clicks the "{first_button}" button')
+#                 if interaction.url_after:
+#                     steps.append(f'Then the page should navigate to "{interaction.url_after}"')
+#                 else:
+#                     steps.append('Then the dialog should close')
+        
+#         return TestScenario(
+#             feature_name=f'Validate {element_text or "navigation"} interaction',
+#             scenario_name=f'Verify behavior when clicking {element_desc}',
+#             steps=steps,
+#             scenario_type='popup',
+#             url=url,
+#             confidence=0.5
+#         )
+
+"""
+Agent Orchestrator - COMPLETE WORKING VERSION
+Coordinates AI to generate test scenarios from interactions
+"""
+import logging
+import json
+from typing import Dict, Any, List, Optional, Set
+from dataclasses import dataclass
+from .llm_client import OllamaClient
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TestScenario:
+    """Represents a generated test scenario"""
+    feature_name: str
+    scenario_name: str
+    steps: List[str]
+    scenario_type: str  # 'hover', 'popup'
+    url: str
+    confidence: float = 1.0
+    
+    # Optional enhanced fields
+    feature_description: str = ""
+    background: List[str] = None
+    tags: List[str] = None
+    
+    def __post_init__(self):
+        if self.background is None:
+            self.background = []
+        if self.tags is None:
+            self.tags = []
+    
+    def is_valid(self) -> bool:
+        """Check if scenario is valid and meaningful"""
+        # Must have steps
+        if not self.steps or len(self.steps) < 3:
+            return False
+        
+        # Steps must have actual content (not empty strings)
+        if any(not step.strip() for step in self.steps):
+            return False
+        
+        # Must have meaningful descriptions (not generic)
+        generic_phrases = ["button element", "element", "the ''", "with the title ''"]
+        scenario_text = " ".join(self.steps).lower()
+        
+        # Check for too many generic phrases
+        generic_count = sum(1 for phrase in generic_phrases if phrase in scenario_text)
+        if generic_count > 2:
+            return False
+        
+        return True
+
+
+class AgentOrchestrator:
+    """
+    Orchestrates AI to generate test scenarios
+    """
+    
+    def __init__(self, ollama_url: str = None, model: str = None):
+        self.llm = OllamaClient(ollama_url, model)
+        self._seen_scenarios: Set[str] = set()
+    
+    async def generate_scenarios(
+        self, 
+        url: str, 
+        interactions: List[Any],
+        dom_structure: Dict[str, Any]
+    ) -> List[TestScenario]:
+        """
+        Main orchestration method - generates test scenarios from interactions
+        ENHANCED: Creates separate scenarios for each link in menu
+        """
+        logger.info("Starting AI agent workflow for scenario generation...")
+        
+        scenarios = []
+        
+        # Group interactions to avoid duplicates
+        interaction_groups = self._group_interactions(interactions)
+        
+        # Process hover interactions - CREATE MULTIPLE SCENARIOS per menu
+        for interaction in interaction_groups['hover']:
+            try:
+                # Get clickable links
+                clickable_links = []
+                if interaction.visual_changes and interaction.visual_changes.get('clickable_links'):
+                    clickable_links = interaction.visual_changes['clickable_links']
+                
+                if clickable_links and len(clickable_links) > 1:
+                    # Create ONE scenario per link (not one scenario for all links)
+                    for link in clickable_links[:5]:  # Max 5 scenarios per menu
+                        scenario = await self._generate_hover_scenario_for_link(
+                            url, interaction, link, dom_structure
+                        )
+                        if scenario and scenario.is_valid() and self._is_unique_scenario(scenario):
+                            scenarios.append(scenario)
+                            logger.info(f"✓ Generated scenario: {scenario.scenario_name}")
+                else:
+                    # Single scenario for simple hover
+                    scenario = await self._generate_hover_scenario(
+                        url, interaction, dom_structure
+                    )
+                    if scenario and scenario.is_valid() and self._is_unique_scenario(scenario):
+                        scenarios.append(scenario)
+                        logger.info(f"✓ Generated hover scenario: {scenario.scenario_name}")
+                        
+            except Exception as e:
+                logger.warning(f"Failed to generate hover scenario: {str(e)}")
+        
+        # Process popup interactions
+        for interaction in interaction_groups['popup']:
+            try:
+                scenario = await self._generate_popup_scenario(url, interaction, dom_structure)
+                if scenario and scenario.is_valid() and self._is_unique_scenario(scenario):
+                    scenarios.append(scenario)
+                    logger.info(f"✓ Generated popup scenario: {scenario.scenario_name}")
+            except Exception as e:
+                logger.warning(f"Failed to generate popup scenario: {str(e)}")
+        
+        logger.info(f"Generated {len(scenarios)} unique, quality scenarios")
+        return scenarios
+    
+    async def _generate_hover_scenario_for_link(
+        self,
+        url: str,
+        interaction: Any,
+        link: Dict[str, str],
+        dom_structure: Dict[str, Any]
+    ) -> Optional[TestScenario]:
+        """
+        Generate scenario for ONE specific link from a menu
+        Creates: Hover menu → Click specific link → Verify URL
+        """
+        menu_name = interaction.trigger_element.text or "navigation menu"
+        link_text = link.get('text', '')
+        target_url = link.get('target_url', '')
+        
+        if not link_text or not target_url:
+            return None
+        
+        prompt = f"""Generate a Gherkin scenario for this navigation flow:
+
+CONTEXT:
+- Current Page: {url}
+- Menu: "{menu_name}"
+- Link in Menu: "{link_text}"
+- Target URL: {target_url}
+
+TASK: Create a scenario that tests:
+1. Hover over "{menu_name}" menu
+2. Dropdown appears
+3. Click "{link_text}" link from dropdown
+4. URL changes to {target_url}
+
+OUTPUT (JSON):
+{{
+  "feature_name": "Validate {menu_name} navigation to {link_text}",
+  "scenario_name": "Verify navigation from {menu_name} to {link_text} page",
+  "steps": [
+    "Given the user is on \\"{url}\\" page",
+    "When the user hovers over the navigation menu \\"{menu_name}\\"",
+    "Then a dropdown menu should appear",
+    "When the user clicks the link \\"{link_text}\\" from the dropdown",
+    "Then the page URL should change to \\"{target_url}\\""
+  ]
+}}
+
+Generate JSON only:"""
+
+        try:
+            response = await self.llm.generate_json(prompt)
+            
+            return TestScenario(
+                feature_name=response.get('feature_name', f'Validate {menu_name} navigation'),
+                scenario_name=response.get('scenario_name', f'Verify {link_text} navigation'),
+                steps=response.get('steps', []),
+                scenario_type='hover',
+                url=url,
+                confidence=0.9
+            )
+        except Exception as e:
+            logger.error(f"Failed to generate link scenario: {str(e)}")
+            # Fallback
+            return TestScenario(
+                feature_name=f'Validate {menu_name} navigation to {link_text}',
+                scenario_name=f'Verify navigation to {link_text} page',
+                steps=[
+                    f'Given the user is on "{url}" page',
+                    f'When the user hovers over the navigation menu "{menu_name}"',
+                    'Then a dropdown menu should appear',
+                    f'When the user clicks the link "{link_text}" from the dropdown',
+                    f'Then the page URL should change to "{target_url}"'
+                ],
+                scenario_type='hover',
+                url=url,
+                confidence=0.7
+            )
+    
+    def _group_interactions(self, interactions: List[Any]) -> Dict[str, List[Any]]:
+        """Group and deduplicate interactions"""
+        grouped = {'hover': [], 'popup': []}
+        seen_elements = set()
+        
+        for interaction in interactions:
+            # Create unique key for element
+            element_key = (
+                interaction.trigger_element.text[:50],
+                interaction.trigger_element.tag,
+                interaction.action_type
+            )
+            
+            # Skip duplicates
+            if element_key in seen_elements:
+                continue
+            
+            seen_elements.add(element_key)
+            
+            if interaction.action_type == 'hover':
+                grouped['hover'].append(interaction)
+            elif interaction.popup_appeared:
+                grouped['popup'].append(interaction)
+        
+        logger.info(f"Grouped: {len(grouped['hover'])} hover, {len(grouped['popup'])} popup (deduplicated)")
+        return grouped
+    
+    def _is_unique_scenario(self, scenario: TestScenario) -> bool:
+        """Check if scenario is unique"""
+        # Create signature from steps
+        signature = "|".join(scenario.steps)
+        
+        if signature in self._seen_scenarios:
+            return False
+        
+        self._seen_scenarios.add(signature)
+        return True
+    
+    async def _generate_hover_scenario(
+        self, 
+        url: str, 
+        interaction: Any,
+        dom_structure: Dict[str, Any]
+    ) -> Optional[TestScenario]:
+        """Generate test scenario for hover interaction using AI"""
+        
+        context = self._prepare_hover_context(url, interaction, dom_structure)
+        
+        # Check if we have clickable links from the menu
+        clickable_links = []
+        if interaction.visual_changes and interaction.visual_changes.get('clickable_links'):
+            clickable_links = interaction.visual_changes['clickable_links']
+        
+        # Build context about clickable links
+        links_info = ""
+        if clickable_links:
+            links_list = [f"'{link['text']}' → {link['target_url']}" for link in clickable_links[:3]]
+            links_info = f"\nClickable Links in Menu:\n" + "\n".join(links_list)
+        
+        prompt = f"""You are a QA automation expert generating Gherkin test scenarios.
+
+CONTEXT:
+- URL: {context['url']}
+- Page Type: {context['page_type']}
+- Element: {context['trigger_description']}
+- What Appears on Hover: {context['revealed_description']}
+- URL Changed: {context['url_changed']}{links_info}
+
+STRICT REQUIREMENTS:
+1. Use SPECIFIC element descriptions (e.g., "About Tivdak menu", not "button element")
+2. Describe ACTUAL behavior: hover reveals menu, then click link
+3. If clickable links are provided, include steps to click them and verify navigation
+4. Use "the user hovers over" (NOT "clicks" for the initial action)
+5. After hover, if links exist, add: "And clicks the link '[link name]' from the dropdown"
+6. Then verify: "Then the page URL should change to '[target URL]'"
+
+COMPLETE INTERACTION FLOW:
+Step 1: Hover over element → Menu appears
+Step 2: Click link from menu → Navigate to new page
+Step 3: Verify URL changed
+
+OUTPUT FORMAT (JSON only):
+{{
+  "feature_name": "Validate [element] navigation functionality",
+  "scenario_name": "Verify navigation from [current page] to [target page]",
+  "steps": [
+    "Given the user is on \\"{context['url']}\\" page",
+    "When the user hovers over the navigation menu \\"[MENU NAME]\\"",
+    "And clicks the link \\"[LINK NAME]\\" from the dropdown",
+    "Then the page URL should change to \\"[TARGET URL]\\""
+  ]
+}}
+
+EXAMPLE (if About Tivdak menu has "What is Tivdak?" link to /about-tivdak/):
+{{
+  "feature_name": "Validate About Tivdak navigation functionality",
+  "scenario_name": "Verify navigation from Patient Stories to What is Tivdak page",
+  "steps": [
+    "Given the user is on \\"https://www.tivdak.com/patient-stories/\\" page",
+    "When the user hovers over the navigation menu \\"About Tivdak\\"",
+    "And clicks the link \\"What is Tivdak?\\" from the dropdown",
+    "Then the page URL should change to \\"https://www.tivdak.com/about-tivdak/\\""
+  ]
+}}
+
+Generate for the provided context. Return ONLY valid JSON:"""
+
+        try:
+            response = await self.llm.generate_json(prompt)
+            
+            scenario = TestScenario(
+                feature_name=response.get('feature_name', 'Validate hover functionality'),
+                scenario_name=response.get('scenario_name', 'Verify hover interaction'),
+                steps=response.get('steps', []),
+                scenario_type='hover',
+                url=url,
+                confidence=0.8
+            )
+            
+            if not scenario.is_valid():
+                logger.warning("AI generated low-quality hover scenario, using fallback")
+                return self._fallback_hover_scenario(url, interaction, clickable_links)
+            
+            return scenario
+            
+        except Exception as e:
+            logger.error(f"AI generation failed for hover scenario: {str(e)}")
+            return self._fallback_hover_scenario(url, interaction, clickable_links)
+    
+    async def _generate_popup_scenario(
+        self,
+        url: str,
+        interaction: Any,
+        dom_structure: Dict[str, Any]
+    ) -> Optional[TestScenario]:
+        """Generate test scenario for popup interaction using AI"""
+        
+        context = self._prepare_popup_context(url, interaction, dom_structure)
+        
+        # Check if it's actually a popup
+        if not context['popup_title'] and not context['popup_buttons']:
+            logger.debug("Not a true popup, skipping scenario generation")
+            return None
+        
+        prompt = f"""You are a QA automation expert. Generate a Gherkin test scenario for this interaction.
+
+CONTEXT:
+- URL: {context['url']}
+- Trigger Element: {context['trigger_description']}
+- Popup/Modal Title: "{context['popup_title']}"
+- Available Buttons: {context['popup_buttons']}
+- URL Changes After: {context['url_changed']}
+
+CRITICAL REQUIREMENTS:
+1. Use the EXACT element description
+2. Include the ACTUAL popup title in quotes
+3. Test ONLY the buttons that actually exist
+4. If this is a dropdown menu, describe it as "dropdown menu"
+5. Be SPECIFIC about expected outcomes
+
+OUTPUT (JSON only):
+{{
+  "feature_name": "Validate [specific] functionality",
+  "scenario_name": "Verify [specific behavior]",
+  "steps": [
+    "Given the user is on \\"{context['url']}\\" page",
+    "When the user clicks the [SPECIFIC element name]",
+    "Then a [popup/modal/dropdown] should appear",
+    "[Test specific button actions]"
+  ]
+}}
+
+Generate for provided context:"""
+
+        try:
+            response = await self.llm.generate_json(prompt)
+            
+            scenario = TestScenario(
+                feature_name=response.get('feature_name', 'Validate interaction'),
+                scenario_name=response.get('scenario_name', 'Verify interaction'),
+                steps=response.get('steps', []),
+                scenario_type='popup',
+                url=url,
+                confidence=0.8
+            )
+            
+            if not scenario.is_valid():
+                logger.warning("AI generated low-quality popup scenario, using fallback")
+                return self._fallback_popup_scenario(url, interaction)
+            
+            return scenario
+            
+        except Exception as e:
+            logger.error(f"AI generation failed for popup scenario: {str(e)}")
+            return self._fallback_popup_scenario(url, interaction)
+    
+    def _prepare_hover_context(self, url: str, interaction: Any, dom_structure: Dict) -> Dict[str, str]:
+        """Prepare context for hover scenario generation"""
+        if interaction.revealed_elements:
+            revealed_texts = [el.text[:50] for el in interaction.revealed_elements[:3] if el.text]
+            revealed_desc = ", ".join(revealed_texts) if revealed_texts else "navigation options or dropdown items"
+        else:
+            revealed_desc = "additional navigation options"
+        
+        return {
+            'url': url,
+            'page_type': dom_structure.get('page_type', 'general'),
+            'trigger_description': interaction.trigger_element.get_description(),
+            'revealed_description': revealed_desc,
+            'url_changed': 'Yes' if interaction.url_after else 'No'
+        }
+    
+    def _prepare_popup_context(self, url: str, interaction: Any, dom_structure: Dict) -> Dict[str, str]:
+        """Prepare context for popup scenario generation"""
+        popup_info = interaction.popup_info or {}
+        
+        buttons = popup_info.get('buttons', [])
+        button_names = [btn.get('text', '').strip() for btn in buttons if btn.get('text', '').strip()]
+        buttons_str = ', '.join(button_names) if button_names else 'No buttons detected'
+        
+        return {
+            'url': url,
+            'page_type': dom_structure.get('page_type', 'general'),
+            'trigger_description': interaction.trigger_element.get_description(),
+            'popup_title': popup_info.get('title', '').strip(),
+            'popup_buttons': buttons_str,
+            'url_changed': 'Yes' if interaction.url_after else 'No'
+        }
+    
+    def _fallback_hover_scenario(self, url: str, interaction: Any, clickable_links: List[Dict] = None) -> TestScenario:
+        """Fallback template-based scenario with complete interaction flow"""
+        element_text = interaction.trigger_element.text[:50] if interaction.trigger_element.text else "navigation element"
+        element_tag = interaction.trigger_element.tag
+        
+        if element_text:
+            element_desc = f'"{element_text}" {element_tag}'
+            menu_name = element_text
+        else:
+            element_desc = f'{element_tag} element in navigation'
+            menu_name = "navigation menu"
+        
+        revealed = interaction.revealed_elements
+        if revealed and any(el.text for el in revealed):
+            outcome = "a dropdown menu with additional options should appear"
+        else:
+            outcome = "additional navigation content should become visible"
+        
+        steps = [
+            f'Given the user is on "{url}" page',
+            f'When the user hovers over the navigation menu "{menu_name}"',
+            f'Then {outcome}',
+        ]
+        
+        # Add clickable link steps if available
+        if clickable_links and len(clickable_links) > 0:
+            first_link = clickable_links[0]
+            link_text = first_link.get('text', '')
+            target_url = first_link.get('target_url', '')
+            
+            if link_text and target_url:
+                steps.append(f'And clicks the link "{link_text}" from the dropdown')
+                steps.append(f'Then the page URL should change to "{target_url}"')
+        elif interaction.url_after:
+            steps.append(f'And the page URL should change to "{interaction.url_after}"')
+        
+        scenario_name = f'Verify navigation from {menu_name} menu'
+        if clickable_links and len(clickable_links) > 0:
+            first_link = clickable_links[0]
+            link_text = first_link.get('text', '')
+            if link_text:
+                scenario_name = f'Verify navigation to {link_text} page'
+        
+        return TestScenario(
+            feature_name=f'Validate {menu_name} navigation functionality',
+            scenario_name=scenario_name,
+            steps=steps,
+            scenario_type='hover',
+            url=url,
+            confidence=0.6
+        )
+    
+    def _fallback_popup_scenario(self, url: str, interaction: Any) -> TestScenario:
+        """Fallback template-based scenario"""
+        element_text = interaction.trigger_element.text[:50] if interaction.trigger_element.text else None
+        popup_info = interaction.popup_info or {}
+        
+        if element_text:
+            element_desc = f'"{element_text}" button'
+        else:
+            element_desc = 'navigation button'
+        
+        popup_title = popup_info.get('title', '').strip()
+        buttons = popup_info.get('buttons', [])
+        
+        steps = [
+            f'Given the user is on "{url}" page',
+            f'When the user clicks the {element_desc}',
+        ]
+        
+        if popup_title:
+            steps.append(f'Then a modal dialog should appear with the title "{popup_title}"')
+        else:
+            steps.append('Then a dropdown menu or overlay should appear')
+        
+        if buttons:
+            first_button = buttons[0].get('text', '').strip()
+            if first_button:
+                steps.append(f'When the user clicks the "{first_button}" button')
+                if interaction.url_after:
+                    steps.append(f'Then the page should navigate to "{interaction.url_after}"')
+                else:
+                    steps.append('Then the dialog should close')
+        
+        return TestScenario(
+            feature_name=f'Validate {element_text or "navigation"} interaction',
+            scenario_name=f'Verify behavior when clicking {element_desc}',
+            steps=steps,
+            scenario_type='popup',
+            url=url,
+            confidence=0.5
+        )

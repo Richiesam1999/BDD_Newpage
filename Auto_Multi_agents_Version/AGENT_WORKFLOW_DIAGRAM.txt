@@ -1,0 +1,234 @@
+╔═══════════════════════════════════════════════════════════════════════════════╗
+║                    MULTI-AGENT LANGGRAPH WORKFLOW                             ║
+║                    BDD Test Generation System                                 ║
+╚═══════════════════════════════════════════════════════════════════════════════╝
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          USER INPUT                                         │
+│                          Website URL                                        │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     BROWSER AUTOMATION LAYER                                │
+│                          (Playwright)                                       │
+│  • Navigate to URL                                                          │
+│  • Execute JavaScript                                                       │
+│  • Capture screenshots                                                      │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     ELEMENT DETECTION LAYER                                 │
+│                      (element_detector.py)                                  │
+│  • Find hoverable elements                                                  │
+│  • Detect popup triggers                                                    │
+│  • Simulate interactions                                                    │
+│  • Capture visual changes                                                   │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                        DOM ANALYSIS LAYER                                   │
+│                       (dom_analyzer.py)                                     │
+│  • Parse HTML structure                                                     │
+│  • Extract semantic information                                             │
+│  • Identify page type                                                       │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                    MULTI-AGENT WORKFLOW STARTS                              ║
+║                         (LangGraph)                                         ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  AGENT 1: DOM ANALYSIS AGENT                                                │
+│  File: src/ai/agents/dom_agent.py                                           │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ INPUT:                                                                 │ │
+│  │  • Raw interactions from element detector                             │ │
+│  │  • DOM structure                                                       │ │
+│  │                                                                         │ │
+│  │ PROCESSING:                                                            │ │
+│  │  • Extract element information (text, tag, description)               │ │
+│  │  • Classify interaction type (hover/popup/click/other)                │ │
+│  │  • Add type-specific metadata                                         │ │
+│  │                                                                         │ │
+│  │ OUTPUT:                                                                │ │
+│  │  • List of classified interactions with metadata                      │ │
+│  │  • Each interaction has: type, element info, trigger text, etc.       │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  AGENT 2: INTERACTION CLASSIFIER AGENT                                      │
+│  File: src/ai/agents/classifier_agent.py                                    │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ INPUT:                                                                 │ │
+│  │  • Classified interactions from DOM Agent                             │ │
+│  │                                                                         │ │
+│  │ PROCESSING:                                                            │ │
+│  │  • Separate interactions by type                                      │ │
+│  │  • Group into categories: hover, popup, click, other                  │ │
+│  │  • Log statistics                                                      │ │
+│  │                                                                         │ │
+│  │ OUTPUT:                                                                │ │
+│  │  • Dictionary with categorized interactions:                          │ │
+│  │    - hover: [list of hover interactions]                              │ │
+│  │    - popup: [list of popup interactions]                              │ │
+│  │    - click: [list of click interactions]                              │ │
+│  │    - other: [list of other interactions]                              │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                    ┌────────────┴────────────┐
+                    │                         │
+                    ▼                         ▼
+┌──────────────────────────────┐  ┌──────────────────────────────┐
+│  AGENT 3: HOVER AGENT        │  │  AGENT 4: POPUP AGENT        │
+│  File: hover_agent.py        │  │  File: popup_agent.py        │
+│  ┌────────────────────────┐  │  │  ┌────────────────────────┐  │
+│  │ INPUT:                 │  │  │  │ INPUT:                 │  │
+│  │  • Hover interactions  │  │  │  │  • Popup interactions  │  │
+│  │  • Page URL            │  │  │  │  • Page URL            │  │
+│  │                        │  │  │  │                        │  │
+│  │ PROCESSING:            │  │  │  │ PROCESSING:            │  │
+│  │  • Check for links     │  │  │  │  • Extract popup info  │  │
+│  │  • Generate navigation │  │  │  │  • Classify buttons    │  │
+│  │    scenarios (if links)│  │  │  │  • Test both buttons   │  │
+│  │  • Use LLM for complex │  │  │  │  • Use LLM generation  │  │
+│  │    cases               │  │  │  │  • Fallback templates  │  │
+│  │  • Fallback templates  │  │  │  │                        │  │
+│  │                        │  │  │  │                        │  │
+│  │ OUTPUT:                │  │  │  │ OUTPUT:                │  │
+│  │  • HoverScenario[]     │  │  │  │  • PopupScenario[]     │  │
+│  │    - feature_name      │  │  │  │    - feature_name      │  │
+│  │    - scenario_name     │  │  │  │    - scenario_name     │  │
+│  │    - steps[]           │  │  │  │    - steps[]           │  │
+│  │    - confidence        │  │  │  │    - confidence        │  │
+│  └────────────────────────┘  │  │  └────────────────────────┘  │
+└──────────────┬───────────────┘  └──────────────┬───────────────┘
+               │                                 │
+               └────────────┬────────────────────┘
+                            │
+                            ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  AGENT 5: GHERKIN AGENT                                                     │
+│  File: src/ai/agents/gherkin_agent.py                                       │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ INPUT:                                                                 │ │
+│  │  • Hover scenarios from Hover Agent                                   │ │
+│  │  • Popup scenarios from Popup Agent                                   │ │
+│  │                                                                         │ │
+│  │ PROCESSING:                                                            │ │
+│  │  • Format all scenarios to proper Gherkin syntax                      │ │
+│  │  • Ensure steps start with Given/When/Then/And/But                    │ │
+│  │  • Fix missing keywords                                               │ │
+│  │  • Standardize formatting                                             │ │
+│  │                                                                         │ │
+│  │ OUTPUT:                                                                │ │
+│  │  • GherkinScenario[]                                                  │ │
+│  │    - feature_name                                                      │ │
+│  │    - scenario_name                                                     │ │
+│  │    - steps[] (properly formatted)                                     │ │
+│  │    - scenario_type (hover/popup)                                      │ │
+│  │    - confidence                                                        │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  AGENT 6: VALIDATOR AGENT                                                   │
+│  File: src/ai/agents/validator_agent.py                                     │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │ INPUT:                                                                 │ │
+│  │  • Gherkin-formatted scenarios                                        │ │
+│  │                                                                         │ │
+│  │ VALIDATION CHECKS:                                                     │ │
+│  │  ✓ Minimum 3 steps required                                           │ │
+│  │  ✓ No empty steps                                                      │ │
+│  │  ✓ All steps start with Gherkin keywords                              │ │
+│  │  ✓ Must have Given, When, Then                                        │ │
+│  │  ✓ No generic phrases ("button element", "the ''")                    │ │
+│  │  ✓ No empty feature/scenario names                                    │ │
+│  │  ✓ No technical selectors (CSS/XPath)                                 │ │
+│  │                                                                         │ │
+│  │ OUTPUT:                                                                │ │
+│  │  • List of VALIDATED scenarios (only valid ones pass)                │ │
+│  │  • Rejected scenarios are logged with reasons                         │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+╔═════════════════════════════════════════════════════════════════════════════╗
+║                    MULTI-AGENT WORKFLOW ENDS                                ║
+║                    Validated Scenarios Ready                                ║
+╚═════════════════════════════════════════════════════════════════════════════╝
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     GHERKIN GENERATOR                                       │
+│                   (gherkin_generator.py)                                    │
+│  • Convert scenarios to .feature file format                               │
+│  • Add feature headers                                                      │
+│  • Format properly                                                          │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     OUTPUT & CACHE LAYER                                    │
+│  • Save .feature files to output/features/                                 │
+│  • Cache results in SQLite                                                  │
+│  • Log statistics                                                           │
+└────────────────────────────────┬────────────────────────────────────────────┘
+                                 │
+                                 ▼
+                        ✅ COMPLETE!
+                    .feature file generated
+
+
+═══════════════════════════════════════════════════════════════════════════════
+
+WORKFLOW EXECUTION FLOW:
+
+1. DOM Analysis Agent      → Classifies interactions
+2. Classifier Agent        → Separates by type
+3. Hover Agent (parallel)  → Generates hover scenarios
+4. Popup Agent (parallel)  → Generates popup scenarios
+5. Gherkin Agent           → Formats to Gherkin
+6. Validator Agent         → Quality checks
+7. Return validated scenarios
+
+═══════════════════════════════════════════════════════════════════════════════
+
+AGENT COMMUNICATION:
+
+State Object (WorkflowState) passed between agents:
+{
+  url: string
+  raw_interactions: List[Interaction]
+  dom_structure: Dict
+  classified_interactions: List[Dict]      ← DOM Agent output
+  categorized: Dict[str, List]             ← Classifier output
+  hover_scenarios: List[HoverScenario]     ← Hover Agent output
+  popup_scenarios: List[PopupScenario]     ← Popup Agent output
+  gherkin_scenarios: List[GherkinScenario] ← Gherkin Agent output
+  validated_scenarios: List[GherkinScenario] ← Validator output
+  error: string
+}
+
+═══════════════════════════════════════════════════════════════════════════════
+
+BENEFITS:
+
+✅ Modular - Each agent has one responsibility
+✅ Debuggable - See exactly which agent failed
+✅ Extensible - Easy to add new agents
+✅ Quality - Validator ensures only good scenarios pass
+✅ Consistent - Gherkin agent ensures proper formatting
+✅ Specialized - Each agent is expert in its domain
+
+═══════════════════════════════════════════════════════════════════════════════
