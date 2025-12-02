@@ -1,3 +1,6 @@
+!!Important
+Auto_Multi_agents_Version(optional) Folder contains 6 multi agents like DOM, Classifier, popup, hover, gherkin and Validator agents.
+
 BDD Test Generator 🤖
 An AI-powered tool that automatically generates Gherkin BDD test scenarios for websites with hover and popup interactions.
 🎯 Features
