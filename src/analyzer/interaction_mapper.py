@@ -1,6 +1,4 @@
-"""
-Interaction Mapper - Maps and organizes detected interactions
-"""
+
 import logging
 from typing import List, Dict, Any
 from collections import defaultdict

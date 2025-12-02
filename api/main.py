@@ -18,7 +18,6 @@ from src.ai.agent_orchestrator import AgentOrchestrator
 from src.generator.gherkin_generator import GherkinGenerator
 from src.generator.quality_filter import QualityFilter
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -28,24 +27,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Fix for Windows: Set event loop policy to support subprocess operations (required by Playwright)
-# This must be set before any event loops are created (i.e., before uvicorn starts)
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 app = FastAPI(title="BDD Test Generator API")
 
-# Thread pool executor for running Playwright operations on Windows
 _executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="playwright")
 
 
 class GenerateRequest(BaseModel):
-    """Request model for generating BDD tests"""
     url: str
 
 
 class GenerateResponse(BaseModel):
-    """Response model for generated BDD tests"""
+ 
     success: bool
     url: str
     feature_content: str
@@ -54,18 +49,11 @@ class GenerateResponse(BaseModel):
 
 
 def _run_analysis_sync(url: str) -> Dict[str, Any]:
-    """
-    Synchronous wrapper that runs in a thread with a properly configured event loop.
-    This is necessary on Windows where uvicorn's event loop doesn't support subprocess operations.
-    Returns the feature content directly.
-    """
     logger.info(f"[Thread] Starting analysis for URL: {url}")
     
-    # Set the event loop policy for Windows before creating the loop
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
     
-    # Create a new event loop in this thread
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
@@ -227,23 +215,14 @@ async def _run_analysis_async(url: str) -> Dict[str, Any]:
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate_tests(request: GenerateRequest):
-    """
-    Single unified endpoint to generate BDD tests from a URL.
-    Returns the feature file content directly in the response.
-    
-    This is the main API endpoint - simple and easy to use with Streamlit or any client.
-    """
     url = request.url
     logger.info(f"=== NEW REQUEST: POST /generate for URL: {url} ===")
     
-    # Validate URL
     if not url.startswith(('http://', 'https://')):
         logger.error(f"Invalid URL format: {url}")
         raise HTTPException(status_code=400, detail="URL must start with http:// or https://")
     
     try:
-        # On Windows, run Playwright operations in a separate thread with proper event loop
-        # On other platforms, we can run directly
         if sys.platform == "win32":
             logger.info(f"Running on Windows - using thread executor")
             # Submit to thread pool executor to run in a thread with proper event loop
@@ -264,18 +243,18 @@ async def generate_tests(request: GenerateRequest):
         )
 
 
-@app.get("/")
-async def root():
-    """Root endpoint with API information"""
-    return {
-        "name": "BDD Test Generator API",
-        "version": "1.0",
-        "endpoints": {
-            "POST /generate": "Generate BDD tests from a URL. Returns feature file content directly.",
-        },
-        "example": {
-            "url": "/generate",
-            "method": "POST",
-            "body": {"url": "https://example.com"}
-        }
-    }
+# @app.get("/")
+# async def root():
+#     """Root endpoint with API information"""
+#     return {
+#         "name": "BDD Test Generator API",
+#         "version": "1.0",
+#         "endpoints": {
+#             "POST /generate": "Generate BDD tests from a URL. Returns feature file content directly.",
+#         },
+#         "example": {
+#             "url": "/generate",
+#             "method": "POST",
+#             "body": {"url": "https://example.com"}
+#         }
+#     }

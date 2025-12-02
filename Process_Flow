@@ -1,4 +1,4 @@
-          cli_entry_point()
+           cli_entry_point()
                     ↓
             asyncio.run(main())
                     ↓
